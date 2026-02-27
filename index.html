@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phage/ENV — Bacteriophage Activity Prediction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg-deep:    #070d1a;
+  --bg-card:    #0e1628;
+  --bg-panel:   #131f35;
+  --bg-hover:   #1a2840;
+  --border:     #1e3050;
+  --border-hi:  #2a4570;
+  --teal:       #00d4b4;
+  --teal-dim:   #00a896;
+  --teal-glow:  rgba(0,212,180,0.15);
+  --violet:     #a855f7;
+  --violet-dim: #7c3aed;
+  --violet-glow:rgba(168,85,247,0.15);
+  --amber:      #f59e0b;
+  --red:        #ef4444;
+  --green:      #22c55e;
+  --text-hi:    #f0f6ff;
+  --text-mid:   #8ba3c4;
+  --text-lo:    #4a6280;
+  --mono:       'IBM Plex Mono', monospace;
+  --sans:       'DM Sans', sans-serif;
+  --display:    'Syne', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 14px; }
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-hi);
+  font-family: var(--sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Animated background ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(0,212,180,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(168,85,247,0.07) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+#app { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 24px 60px; }
+
+/* ── Header ── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 28px 0 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-icon {
+  width: 38px; height: 38px; border-radius: 10px;
+  background: linear-gradient(135deg, var(--teal) 0%, var(--violet) 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-weight: 800; font-size: 18px; color: #fff;
+}
+.logo h1 {
+  font-family: var(--display); font-weight: 800; font-size: 1.5rem;
+  letter-spacing: -0.02em; color: var(--text-hi);
+}
+.logo span { color: var(--teal); }
+.logo-sub { font-family: var(--mono); font-size: 0.75rem; color: var(--text-lo); letter-spacing: 0.08em; }
+
+/* ── Tabs ── */
+.tabs { display: flex; gap: 4px; background: var(--bg-card); padding: 4px; border-radius: 12px; border: 1px solid var(--border); }
+.tab-btn {
+  font-family: var(--display); font-weight: 600; font-size: 0.85rem;
+  padding: 8px 20px; border-radius: 8px; border: none; cursor: pointer;
+  color: var(--text-mid); background: transparent;
+  transition: all 0.2s; letter-spacing: 0.02em; white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text-hi); background: var(--bg-hover); }
+.tab-btn.active { color: var(--bg-deep); background: var(--teal); }
+.tab-btn.active.violet { background: var(--violet); }
+.tab-btn.active.amber { background: var(--amber); color: var(--bg-deep); }
+
+/* ── Tab panels ── */
+.tab-panel { display: none; animation: fadeIn 0.25s ease; }
+.tab-panel.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ── Section titles ── */
+.section-title {
+  font-family: var(--display); font-weight: 700; font-size: 1.1rem;
+  color: var(--text-hi); letter-spacing: -0.01em; margin-bottom: 4px;
+}
+.section-sub { font-size: 0.82rem; color: var(--text-mid); margin-bottom: 16px; }
+
+/* ── Cards ── */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px; margin-bottom: 20px;
+}
+.card-sm { padding: 16px 20px; }
+
+/* ── Upload zone ── */
+.upload-zone {
+  border: 2px dashed var(--border-hi); border-radius: 12px;
+  padding: 36px 24px; text-align: center; cursor: pointer;
+  transition: all 0.2s; position: relative;
+}
+.upload-zone:hover, .upload-zone.dragging {
+  border-color: var(--teal); background: var(--teal-glow);
+}
+.upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.upload-icon { font-size: 2rem; margin-bottom: 8px; }
+.upload-zone h3 { font-family: var(--display); font-weight: 700; font-size: 1rem; color: var(--text-hi); margin-bottom: 4px; }
+.upload-zone p { font-size: 0.8rem; color: var(--text-mid); }
+
+/* ── Buttons ── */
+.btn {
+  font-family: var(--display); font-weight: 700; font-size: 0.82rem;
+  padding: 9px 20px; border-radius: 8px; border: none; cursor: pointer;
+  letter-spacing: 0.03em; transition: all 0.18s; display: inline-flex;
+  align-items: center; gap: 7px;
+}
+.btn-teal { background: var(--teal); color: var(--bg-deep); }
+.btn-teal:hover { background: #00f0cc; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,212,180,0.3); }
+.btn-violet { background: var(--violet); color: #fff; }
+.btn-violet:hover { background: #c084fc; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(168,85,247,0.3); }
+.btn-ghost { background: var(--bg-panel); color: var(--text-mid); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg-hover); color: var(--text-hi); border-color: var(--border-hi); }
+.btn-sm { padding: 6px 14px; font-size: 0.75rem; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+/* ── Pill badges ── */
+.badge { font-family: var(--mono); font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+.badge-teal { background: var(--teal-glow); color: var(--teal); border: 1px solid rgba(0,212,180,0.3); }
+.badge-violet { background: var(--violet-glow); color: var(--violet); border: 1px solid rgba(168,85,247,0.3); }
+.badge-red { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+.badge-green { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+
+/* ── Table ── */
+.data-table-wrap { overflow-x: auto; max-height: 260px; overflow-y: auto; border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.72rem; }
+thead th {
+  background: var(--bg-panel); color: var(--teal); text-align: left;
+  padding: 8px 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 2;
+  font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+}
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: var(--bg-hover); }
+tbody td { padding: 6px 12px; color: var(--text-mid); }
+tbody td:first-child { color: var(--text-hi); }
+.table-valid { color: var(--green) !important; }
+.table-invalid { color: var(--red) !important; }
+
+/* ── Metrics row ── */
+.metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.metric-card {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 18px;
+}
+.metric-label { font-family: var(--mono); font-size: 0.68rem; color: var(--text-lo); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+.metric-value { font-family: var(--display); font-weight: 800; font-size: 1.8rem; letter-spacing: -0.03em; }
+.metric-value.good { color: var(--teal); }
+.metric-value.warn { color: var(--amber); }
+.metric-value.bad { color: var(--red); }
+
+/* ── Charts grid ── */
+.charts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.chart-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+  display: flex; flex-direction: column;
+}
+.chart-title { font-family: var(--display); font-weight: 700; font-size: 0.85rem; color: var(--text-hi); margin-bottom: 12px; }
+.chart-wrap { flex: 1; position: relative; min-height: 180px; }
+
+/* ── Spinner ── */
+.spinner {
+  display: inline-block; width: 18px; height: 18px;
+  border: 2px solid rgba(0,212,180,0.2); border-top-color: var(--teal);
+  border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-overlay {
+  position: absolute; inset: 0; background: rgba(7,13,26,0.7);
+  display: flex; align-items: center; justify-content: center; border-radius: 12px;
+  z-index: 10; backdrop-filter: blur(2px);
+}
+.loading-overlay .spinner { width: 32px; height: 32px; border-width: 3px; }
+
+/* ── Alert ── */
+.alert { border-radius: 10px; padding: 12px 16px; font-size: 0.82rem; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px; }
+.alert-error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); color: #fca5a5; }
+.alert-success { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.25); color: #86efac; }
+.alert-info { background: rgba(0,212,180,0.08); border: 1px solid rgba(0,212,180,0.25); color: var(--teal); }
+.alert-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+
+/* ── Interactive Heatmap ── */
+#heatmapDiv { width: 100%; overflow-x: auto; }
+.heatmap-table { border-collapse: separate; border-spacing: 3px; width: 100%; table-layout: fixed; }
+.heatmap-table th {
+  font-family: var(--mono); font-size: 0.72rem; font-weight: 500;
+  color: var(--teal); text-align: center; padding: 5px 4px;
+  white-space: nowrap;
+}
+.heatmap-table th.media-header {
+  text-align: right; color: var(--text-mid); padding-right: 10px;
+  font-size: 0.7rem; min-width: 120px; width: 120px;
+}
+.heatmap-cell {
+  position: relative; border-radius: 6px; text-align: center;
+  cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  padding: 10px 4px;
+}
+.heatmap-cell:hover {
+  transform: scale(1.08); z-index: 5;
+  box-shadow: 0 0 0 2px #fff4, 0 4px 16px #0006;
+}
+.heatmap-cell .cell-val {
+  font-family: var(--mono); font-size: 0.72rem; font-weight: 500;
+  display: block; pointer-events: none; position: relative; z-index: 1;
+}
+/* Tooltip */
+.hm-tooltip {
+  position: fixed; z-index: 9999; pointer-events: none;
+  background: var(--bg-deep); border: 1px solid var(--border-hi);
+  border-radius: 8px; padding: 8px 12px; font-family: var(--mono);
+  font-size: 0.72rem; color: var(--text-hi); box-shadow: 0 8px 24px #000a;
+  opacity: 0; transition: opacity 0.12s; white-space: nowrap;
+}
+.hm-tooltip.visible { opacity: 1; }
+.hm-tooltip .tt-val { font-size: 1rem; font-weight: 700; color: var(--teal); display: block; }
+/* Highlight cross-hair */
+.heatmap-cell.row-hi { outline: 1px solid rgba(255,255,255,0.15); }
+.heatmap-cell.col-hi { outline: 1px solid rgba(255,255,255,0.15); }
+.heatmap-cell.active-hi { outline: 2px solid #fff8 !important; transform: scale(1.1) !important; z-index: 6; }
+
+/* ── Version history ── */
+.version-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 0;
+  border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 0.75rem;
+}
+.version-item:last-child { border-bottom: none; }
+.version-num { color: var(--teal); font-weight: 500; min-width: 24px; }
+.version-time { color: var(--text-lo); font-size: 0.68rem; margin-left: auto; }
+
+/* ── Step indicator ── */
+.step-row { display: flex; align-items: center; gap: 6px; margin-bottom: 20px; }
+.step { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.72rem; color: var(--text-lo); }
+.step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+.step.done .step-dot { background: var(--teal); }
+.step.active .step-dot { background: var(--teal); box-shadow: 0 0 0 3px var(--teal-glow); }
+.step-line { flex: 1; height: 1px; background: var(--border); max-width: 24px; }
+.step.done .step-label { color: var(--text-mid); }
+.step.active .step-label { color: var(--teal); }
+
+/* ── Prediction charts grid ── */
+.pred-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.pred-chart-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+}
+.pred-chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+
+/* ── Skeleton ── */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-panel) 25%, var(--bg-hover) 50%, var(--bg-panel) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite; border-radius: 8px;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ── Misc ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.flex-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.mt-4 { margin-top: 4px; }
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mb-12 { margin-bottom: 12px; }
+.text-mono { font-family: var(--mono); }
+.text-sm { font-size: 0.78rem; color: var(--text-mid); }
+.text-xs { font-size: 0.72rem; color: var(--text-lo); }
+.divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+@media (max-width: 900px) {
+  .charts-grid { grid-template-columns: 1fr; }
+  .metrics-row { grid-template-columns: repeat(2, 1fr); }
+  .pred-charts-grid { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">φ</div>
+      <div>
+        <h1>Phage<span>/ENV</span></h1>
+        <div class="logo-sub">BACTERIOPHAGE ACTIVITY PREDICTION PLATFORM</div>
+      </div>
+    </div>
+    <div class="tabs" id="mainTabs">
+      <button class="tab-btn active" onclick="showTab(0)">① Train</button>
+      <button class="tab-btn violet" onclick="showTab(1)">② Predict</button>
+      <button class="tab-btn amber" onclick="showTab(2)">③ Iterate</button>
+    </div>
+  </header>
+
+  <!-- ════════════════════ TAB 1: TRAIN ════════════════════ -->
+  <div class="tab-panel active" id="panel0">
+
+    <div class="grid-2">
+      <!-- Upload -->
+      <div>
+        <div class="section-title">Training Data</div>
+        <div class="section-sub">Upload a CSV/TSV with phage activity measurements.</div>
+        <div class="card" style="padding:0">
+          <div class="upload-zone" id="trainDropZone">
+            <input type="file" id="trainFileInput" accept=".csv,.tsv">
+            <div class="upload-icon">🧬</div>
+            <h3>Drop CSV / TSV here</h3>
+            <p>or click to browse — must contain <span class="text-mono" style="color:var(--teal)">phage_name, capsid_sequence, pH, media, relative_activity</span></p>
+          </div>
+          <div style="padding:12px 18px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--border);">
+            <span class="text-xs">Need a template?</span>
+            <button class="btn btn-ghost btn-sm" onclick="downloadTemplate()">⬇ Download Example CSV</button>
+          </div>
+        </div>
+        <div id="trainAlerts"></div>
+        <div id="trainStats" style="display:none">
+          <div class="flex-row mt-8 mb-12">
+            <span id="rowCountBadge" class="badge badge-teal"></span>
+            <span id="validBadge" class="badge badge-green"></span>
+            <span id="invalidBadge" class="badge badge-red" style="display:none"></span>
+          </div>
+        </div>
+        <div id="trainTableWrap" style="display:none">
+          <div class="data-table-wrap" id="trainTableContainer"></div>
+        </div>
+      </div>
+
+      <!-- Config & Train -->
+      <div>
+        <div class="section-title">Model Configuration</div>
+        <div class="section-sub">Random Forest Regressor — all feature extraction runs in-browser.</div>
+        <div class="card">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div>
+              <label class="text-xs" style="display:block; margin-bottom:5px; color:var(--text-lo); text-transform:uppercase; letter-spacing:.08em">Trees</label>
+              <input type="number" id="cfgTrees" value="60" min="10" max="200" class="cfg-input">
+            </div>
+            <div>
+              <label class="text-xs" style="display:block; margin-bottom:5px; color:var(--text-lo); text-transform:uppercase; letter-spacing:.08em">Max Depth</label>
+              <input type="number" id="cfgDepth" value="8" min="3" max="20" class="cfg-input">
+            </div>
+            <div>
+              <label class="text-xs" style="display:block; margin-bottom:5px; color:var(--text-lo); text-transform:uppercase; letter-spacing:.08em">Min Samples Split</label>
+              <input type="number" id="cfgMinSplit" value="2" min="2" max="20" class="cfg-input">
+            </div>
+            <div>
+              <label class="text-xs" style="display:block; margin-bottom:5px; color:var(--text-lo); text-transform:uppercase; letter-spacing:.08em">Train / Val Split</label>
+              <input type="number" id="cfgSplit" value="80" min="50" max="95" class="cfg-input" readonly>
+              <span class="text-xs" style="display:block;margin-top:3px">80% train / 20% val</span>
+            </div>
+          </div>
+          <div style="margin-top:18px">
+            <div class="section-title" style="font-size:.85rem; margin-bottom:8px">Features Extracted</div>
+            <div class="flex-row">
+              <span class="badge badge-teal">20× AA composition</span>
+              <span class="badge badge-teal">sequence length</span>
+              <span class="badge badge-teal">hydrophobicity</span>
+              <span class="badge badge-teal">pI estimate</span>
+              <span class="badge badge-violet">pH (continuous)</span>
+              <span class="badge badge-violet">media (one-hot)</span>
+            </div>
+          </div>
+          <div style="margin-top:20px; display:flex; gap:10px;">
+            <button class="btn btn-teal" id="trainBtn" onclick="startTraining()" disabled>
+              <span id="trainBtnSpinner" style="display:none" class="spinner"></span>
+              Train Model
+            </button>
+            <button class="btn btn-ghost" id="retrainBtn" onclick="startTraining()" style="display:none">↺ Retrain</button>
+            <button class="btn btn-violet" id="proceedBtn" onclick="showTab(1)" style="display:none">Predict →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="trainResults" style="display:none">
+      <div class="divider"></div>
+      <div class="flex-between mb-12">
+        <div class="section-title">Training Results <span class="badge badge-teal" id="modelVersionBadge">v1</span></div>
+      </div>
+      <div class="metrics-row" id="metricsRow"></div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Predicted vs. Actual</div>
+          <div class="chart-wrap"><canvas id="scatterChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Feature Importance</div>
+          <div class="chart-wrap"><canvas id="importanceChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Residual Distribution</div>
+          <div class="chart-wrap"><canvas id="residualChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════ TAB 2: PREDICT ════════════════════ -->
+  <div class="tab-panel" id="panel1">
+
+    <div id="noModelWarn" class="alert alert-info" style="display:none">
+      <span class="alert-icon">ℹ</span>
+      <span>No trained model found. Please <a href="#" onclick="showTab(0)" style="color:var(--teal)">train a model first</a>.</span>
+    </div>
+
+    <div class="grid-2" id="predictUploadArea">
+      <div>
+        <div class="section-title">Anchor Data</div>
+        <div class="section-sub">Upload a small CSV with known measurements for your phage of interest. Must include at least one row with <code style="color:var(--teal)">relative_activity = 1.0</code> — this row defines your reference condition; all predictions will be expressed relative to it.</div>
+        <div class="card" style="padding:0">
+          <div class="upload-zone" id="anchorDropZone">
+            <input type="file" id="anchorFileInput" accept=".csv,.tsv">
+            <div class="upload-icon">⚓</div>
+            <h3>Drop anchor CSV here</h3>
+            <p>Same schema as training data — with a reference row (activity = 1.0)</p>
+          </div>
+        </div>
+        <div id="anchorAlerts"></div>
+        <div id="anchorInfo" style="display:none"></div>
+      </div>
+      <div>
+        <div class="section-title">Prediction Scope</div>
+        <div class="section-sub">Predictions will be generated across all media × pH combinations automatically.</div>
+        <div class="card">
+          <div class="metric-label" style="margin-bottom:8px">Media Types (all)</div>
+          <div class="flex-row mb-12">
+            <span class="badge badge-violet">blood</span>
+            <span class="badge badge-violet">intestinal_lumen</span>
+            <span class="badge badge-violet">urine</span>
+            <span class="badge badge-violet">SM_buffer</span>
+            <span class="badge badge-violet">other</span>
+          </div>
+          <div class="metric-label" style="margin-bottom:8px">pH Range</div>
+          <div class="flex-row" style="font-family:var(--mono); font-size:.8rem; color:var(--text-mid)">
+            5.0 &nbsp;→&nbsp; 8.5 &nbsp;<span style="color:var(--text-lo)">in 0.5 increments (8 points × 5 media = 40 predictions)</span>
+          </div>
+          <div style="margin-top:18px">
+            <button class="btn btn-violet" id="runPredBtn" onclick="runPrediction()" disabled>
+              <span id="predBtnSpinner" style="display:none" class="spinner"></span>
+              Run Prediction
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="predResults" style="display:none">
+      <div class="divider"></div>
+      <div class="section-title mb-12">Prediction Results</div>
+      <div class="pred-charts-grid">
+        <div class="pred-chart-card">
+          <div class="pred-chart-header">
+            <div class="chart-title" style="margin-bottom:0">pH vs. Activity by Media</div>
+            <button class="btn btn-ghost btn-sm" onclick="downloadChart('lineChartPred', 'pH_activity_line')">⬇ PNG</button>
+          </div>
+          <div style="position:relative; height:260px"><canvas id="lineChartPred"></canvas></div>
+        </div>
+        <div class="pred-chart-card">
+          <div class="pred-chart-header">
+            <div class="chart-title" style="margin-bottom:0">Activity by Media at Anchor pH</div>
+            <button class="btn btn-ghost btn-sm" onclick="downloadChart('barChartPred', 'activity_by_media')">⬇ PNG</button>
+          </div>
+          <div style="position:relative; height:260px"><canvas id="barChartPred"></canvas></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="pred-chart-header" style="margin-bottom:12px">
+          <div class="chart-title" style="margin-bottom:0">Activity Heatmap — Media × pH</div>
+          <div class="flex-row">
+            <button class="btn btn-ghost btn-sm" onclick="downloadHeatmapPNG()">⬇ PNG</button>
+            <button class="btn btn-ghost btn-sm" onclick="downloadHeatmapCSV()">⬇ CSV</button>
+          </div>
+        </div>
+        <div id="heatmapDiv"></div>
+        <div class="hm-tooltip" id="hmTooltip"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════ TAB 3: ITERATE ════════════════════ -->
+  <div class="tab-panel" id="panel2">
+
+    <div class="grid-2">
+      <div>
+        <div class="section-title">Append & Retrain</div>
+        <div class="section-sub">Upload new ground-truth data to expand your training set and automatically retrain the model.</div>
+        <div class="card" style="padding:0">
+          <div class="upload-zone" id="iterDropZone">
+            <input type="file" id="iterFileInput" accept=".csv,.tsv">
+            <div class="upload-icon">➕</div>
+            <h3>Upload additional data</h3>
+            <p>Will be appended to existing training data and trigger an automatic retrain.</p>
+          </div>
+        </div>
+        <div id="iterAlerts"></div>
+        <div class="flex-row mt-12">
+          <button class="btn btn-teal" id="iterTrainBtn" onclick="iterTrain()" disabled>
+            <span id="iterBtnSpinner" style="display:none" class="spinner"></span>
+            Append & Retrain
+          </button>
+          <button class="btn btn-violet" onclick="showTab(1)">Return to Prediction →</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Version History</div>
+        <div class="section-sub">Performance across training rounds in this session.</div>
+        <div class="card">
+          <div id="versionHistory">
+            <div style="text-align:center; padding:24px; color:var(--text-lo); font-family:var(--mono); font-size:.78rem;">
+              No training runs yet.<br>Train a model in Tab 1 to see history here.
+            </div>
+          </div>
+        </div>
+        <div id="iterSummary" style="display:none" class="card card-sm mt-8">
+          <div class="metric-label" style="margin-bottom:6px">Current Training Set</div>
+          <span id="totalRowsBadge" class="badge badge-teal"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<style>
+.cfg-input {
+  width: 100%; background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 7px; padding: 8px 10px; color: var(--text-hi);
+  font-family: var(--mono); font-size: 0.82rem; outline: none;
+  transition: border-color 0.2s;
+}
+.cfg-input:focus { border-color: var(--teal); }
+</style>
+
+<script>
+// ═══════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════
+const S = {
+  rawData: [],      // all parsed rows (merged across sessions)
+  model: null,      // trained RF
+  featureNames: [], // feature names array
+  valMetrics: null,
+  trainMetrics: null,
+  anchor: null,     // anchor row for normalization
+  anchorPH: null,
+  iterPending: null,
+  versionHistory: [],
+  predMatrix: null,
+  charts: {}
+};
+
+// ═══════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════
+function showTab(i) {
+  document.querySelectorAll('.tab-panel').forEach((p,j) => p.classList.toggle('active', i===j));
+  document.querySelectorAll('.tab-btn').forEach((b,j) => b.classList.toggle('active', i===j));
+  if (i === 1) checkModelForPredict();
+}
+
+// ═══════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════
+const AA_LIST = 'ACDEFGHIKLMNPQRSTVWY'.split('');
+const KD_SCALE = {A:1.8,R:-4.5,N:-3.5,D:-3.5,C:2.5,Q:-3.5,E:-3.5,G:-0.4,H:-3.2,I:4.5,L:3.8,K:-3.9,M:1.9,F:2.8,P:-1.6,S:-0.8,T:-0.7,W:-0.9,Y:-1.3,V:4.2};
+const PK_SCALE = {D:3.65,E:4.25,H:6.0,C:8.18,Y:10.07,K:10.53,R:12.48};
+const MEDIA_LIST = ['blood','intestinal_lumen','urine','SM_buffer','other'];
+const MEDIA_COLORS = {
+  blood: '#ef4444',
+  intestinal_lumen: '#f97316',
+  urine: '#eab308',
+  SM_buffer: '#00d4b4',
+  other: '#a855f7'
+};
+
+// ═══════════════════════════════════════════════
+//  FEATURE EXTRACTION
+// ═══════════════════════════════════════════════
+function extractFeatures(row) {
+  const seq = (row.capsid_sequence || '').toUpperCase().replace(/[^ACDEFGHIKLMNPQRSTVWY]/g,'');
+  const len = seq.length || 1;
+  // AA composition
+  const comp = AA_LIST.map(aa => (seq.split(aa).length - 1) / len);
+  // Hydrophobicity
+  let hydro = 0;
+  for (const c of seq) hydro += (KD_SCALE[c] ?? 0);
+  hydro /= len;
+  // Approximate pI (simplified)
+  let pI = estimatePI(seq);
+  // pH
+  const pH = parseFloat(row.pH) || 7.0;
+  // media one-hot
+  const med = (row.media || 'other').trim().toLowerCase();
+  const mediaOH = MEDIA_LIST.map(m => (m === med || (m==='other' && !MEDIA_LIST.slice(0,4).includes(med))) ? 1 : 0);
+
+  return [...comp, Math.log1p(len)/10, hydro/5, pI/14, pH/14, ...mediaOH];
+}
+
+function estimatePI(seq) {
+  // Newton's method on charge vs pH
+  function charge(pH) {
+    let q = 1 / (1 + Math.pow(10, pH - 8.0)); // N-terminus
+    for (const c of seq) {
+      if (c==='D') q -= 1/(1+Math.pow(10,PK_SCALE.D-pH));
+      else if (c==='E') q -= 1/(1+Math.pow(10,PK_SCALE.E-pH));
+      else if (c==='H') q += 1/(1+Math.pow(10,pH-PK_SCALE.H));
+      else if (c==='C') q -= 1/(1+Math.pow(10,PK_SCALE.C-pH));
+      else if (c==='Y') q -= 1/(1+Math.pow(10,PK_SCALE.Y-pH));
+      else if (c==='K') q += 1/(1+Math.pow(10,pH-PK_SCALE.K));
+      else if (c==='R') q += 1/(1+Math.pow(10,pH-PK_SCALE.R));
+    }
+    q -= 1/(1+Math.pow(10,3.2-pH)); // C-terminus approx
+    return q;
+  }
+  let lo=0, hi=14, mid=7;
+  for (let i=0; i<50; i++) {
+    mid = (lo+hi)/2;
+    if (charge(mid) > 0) lo = mid; else hi = mid;
+  }
+  return mid;
+}
+
+function buildFeatureNames() {
+  const names = [];
+  AA_LIST.forEach(aa => names.push('AA_'+aa));
+  names.push('seq_len','hydrophobicity','pI');
+  names.push('pH');
+  MEDIA_LIST.forEach(m => names.push('media_'+m));
+  return names;
+}
+
+// ═══════════════════════════════════════════════
+//  RANDOM FOREST REGRESSOR
+// ═══════════════════════════════════════════════
+class DecisionNode {
+  constructor() { this.left=null; this.right=null; this.featureIdx=-1; this.threshold=0; this.value=null; }
+}
+
+function buildTree(X, y, depth, maxDepth, minSplit, maxFeatures) {
+  const node = new DecisionNode();
+  if (depth >= maxDepth || y.length < minSplit) {
+    node.value = mean(y); return node;
+  }
+  const nFeatures = X[0].length;
+  // Random subset of features
+  const featIdxs = shuffle(Array.from({length:nFeatures},(_,i)=>i)).slice(0, maxFeatures);
+  let bestVar = Infinity, bestFeat = -1, bestThr = 0, bestLeft = [], bestRight = [], bestLY = [], bestRY = [];
+  for (const fi of featIdxs) {
+    const vals = X.map(r=>r[fi]);
+    const uniq = [...new Set(vals)].sort((a,b)=>a-b);
+    const thresholds = uniq.length > 20
+      ? Array.from({length:20},(_,i)=>uniq[Math.floor(i*uniq.length/20)])
+      : uniq.slice(0,-1).map((v,i)=>(v+uniq[i+1])/2);
+    for (const thr of thresholds) {
+      const lI=[], rI=[];
+      for (let i=0; i<X.length; i++) { if(X[i][fi]<=thr) lI.push(i); else rI.push(i); }
+      if (!lI.length || !rI.length) continue;
+      const lY=lI.map(i=>y[i]), rY=rI.map(i=>y[i]);
+      const v = (variance(lY)*lY.length + variance(rY)*rY.length) / y.length;
+      if (v < bestVar) { bestVar=v; bestFeat=fi; bestThr=thr; bestLeft=lI.map(i=>X[i]); bestRight=rI.map(i=>X[i]); bestLY=lY; bestRY=rY; }
+    }
+  }
+  if (bestFeat === -1) { node.value = mean(y); return node; }
+  node.featureIdx = bestFeat; node.threshold = bestThr;
+  node.left = buildTree(bestLeft, bestLY, depth+1, maxDepth, minSplit, maxFeatures);
+  node.right = buildTree(bestRight, bestRY, depth+1, maxDepth, minSplit, maxFeatures);
+  return node;
+}
+
+function predictTree(node, x) {
+  if (node.value !== null) return node.value;
+  return x[node.featureIdx] <= node.threshold
+    ? predictTree(node.left, x)
+    : predictTree(node.right, x);
+}
+
+function trainRF(X, y, nTrees, maxDepth, minSplit) {
+  const maxFeatures = Math.max(1, Math.round(Math.sqrt(X[0].length)));
+  const trees = [];
+  const oobPreds = new Array(X.length).fill(null).map(()=>({sum:0,cnt:0}));
+  for (let t=0; t<nTrees; t++) {
+    const idxs = Array.from({length:X.length},()=>Math.floor(Math.random()*X.length));
+    const Xb = idxs.map(i=>X[i]), yb = idxs.map(i=>y[i]);
+    const tree = buildTree(Xb, yb, 0, maxDepth, minSplit, maxFeatures);
+    trees.push(tree);
+    // OOB
+    const oobSet = new Set(Array.from({length:X.length},(_,i)=>i).filter(i=>!idxs.includes(i)));
+    for (const i of oobSet) { const p=predictTree(tree,X[i]); oobPreds[i].sum+=p; oobPreds[i].cnt++; }
+  }
+  return { trees, maxDepth, minSplit };
+}
+
+function predictRF(model, X) {
+  return X.map(x => mean(model.trees.map(t => predictTree(t, x))));
+}
+
+// Feature importance via permutation on OOB? Instead use impurity-based (split counts × improvement)
+function computeImportance(model, X, y, featureNames) {
+  // Permutation importance approach (simpler)
+  const basePreds = predictRF(model, X);
+  const baseRMSE = rmse(y, basePreds);
+  const importances = featureNames.map((_, fi) => {
+    const Xp = X.map(r => { const rc=[...r]; rc[fi]=r[fi]; return rc; });
+    // shuffle that feature
+    const col = Xp.map(r=>r[fi]);
+    const shuffled = shuffle([...col]);
+    shuffled.forEach((v,i)=>Xp[i][fi]=v);
+    const preds = predictRF(model, Xp);
+    return Math.max(0, rmse(y, preds) - baseRMSE);
+  });
+  return importances;
+}
+
+// ═══════════════════════════════════════════════
+//  MATH UTILS
+// ═══════════════════════════════════════════════
+function mean(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function variance(arr) { const m=mean(arr); return mean(arr.map(x=>(x-m)**2)); }
+function rmse(actual, pred) { return Math.sqrt(mean(actual.map((a,i)=>(a-pred[i])**2))); }
+function r2(actual, pred) {
+  const m = mean(actual);
+  const ss_res = actual.reduce((s,a,i)=>s+(a-pred[i])**2,0);
+  const ss_tot = actual.reduce((s,a)=>s+(a-m)**2,0);
+  return ss_tot < 1e-10 ? 1 : 1 - ss_res/ss_tot;
+}
+function shuffle(arr) { for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];} return arr; }
+
+// ═══════════════════════════════════════════════
+//  CSV PARSING + VALIDATION
+// ═══════════════════════════════════════════════
+const REQUIRED = ['phage_name','capsid_sequence','pH','media','relative_activity'];
+
+function parseCSV(text) {
+  return new Promise(resolve => {
+    Papa.parse(text, {
+      header: true, skipEmptyLines: true, dynamicTyping: false,
+      complete: res => resolve(res)
+    });
+  });
+}
+
+function validateRows(rows) {
+  const errors = [], valid = [], invalid = [];
+  const fields = rows.length ? Object.keys(rows[0]) : [];
+  const missing = REQUIRED.filter(r => !fields.includes(r));
+  if (missing.length) { errors.push('Missing required columns: ' + missing.join(', ')); return {errors, valid, invalid}; }
+  rows.forEach((r, i) => {
+    const rowErrs = [];
+    if (!r.phage_name || !r.phage_name.trim()) rowErrs.push('phage_name empty');
+    if (!r.capsid_sequence || r.capsid_sequence.trim().length < 5) rowErrs.push('capsid_sequence too short (<5 AA)');
+    const pH = parseFloat(r.pH);
+    if (isNaN(pH) || pH < 0 || pH > 14) rowErrs.push('pH invalid (must be 0–14 numeric)');
+    const act = parseFloat(r.relative_activity);
+    if (isNaN(act) || act < 0) rowErrs.push('relative_activity invalid (must be a non-negative number)');
+    if (!MEDIA_LIST.concat(['other']).includes(r.media)) rowErrs.push('media must be one of: blood, intestinal_lumen, urine, SM_buffer, other');
+    if (rowErrs.length) invalid.push({row:i+2, errs:rowErrs, data:r});
+    else valid.push(r);
+  });
+  return {errors, valid, invalid};
+}
+
+// ═══════════════════════════════════════════════
+//  UPLOAD HANDLERS
+// ═══════════════════════════════════════════════
+function setupDropZone(zoneId, inputId, onFile) {
+  const zone = document.getElementById(zoneId);
+  const inp = document.getElementById(inputId);
+  inp.addEventListener('change', () => { if (inp.files[0]) onFile(inp.files[0]); });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragging');
+    if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+  });
+}
+
+async function readFile(f) {
+  return new Promise((res,rej) => {
+    const fr = new FileReader();
+    fr.onload = e => res(e.target.result);
+    fr.onerror = rej;
+    fr.readAsText(f);
+  });
+}
+
+// ── Train upload ──
+setupDropZone('trainDropZone', 'trainFileInput', async (file) => {
+  clearAlerts('trainAlerts');
+  const text = await readFile(file);
+  const parsed = await parseCSV(text);
+  const {errors, valid, invalid} = validateRows(parsed.data);
+  if (errors.length) { showAlert('trainAlerts', errors.join('; '), 'error'); return; }
+  showAlert('trainAlerts', `Loaded ${valid.length} valid rows${invalid.length ? ` (${invalid.length} skipped)` : ''}.`, 'success');
+  S.rawData = valid;
+  renderTrainTable(valid.slice(0,50));
+  document.getElementById('trainStats').style.display = '';
+  document.getElementById('rowCountBadge').textContent = `${valid.length} rows`;
+  document.getElementById('validBadge').textContent = `${valid.length} valid`;
+  if (invalid.length) {
+    document.getElementById('invalidBadge').style.display='';
+    document.getElementById('invalidBadge').textContent = `${invalid.length} invalid`;
+  }
+  document.getElementById('trainBtn').disabled = false;
+  document.getElementById('iterSummary').style.display='';
+  document.getElementById('totalRowsBadge').textContent = `${valid.length} rows total`;
+});
+
+// ── Anchor upload ──
+setupDropZone('anchorDropZone', 'anchorFileInput', async (file) => {
+  clearAlerts('anchorAlerts');
+  const text = await readFile(file);
+  const parsed = await parseCSV(text);
+  const {errors, valid} = validateRows(parsed.data);
+  if (errors.length) { showAlert('anchorAlerts', errors.join('; '), 'error'); return; }
+  if (!valid.length) { showAlert('anchorAlerts', 'No valid rows found.', 'error'); return; }
+  const ref = valid.find(r => Math.abs(parseFloat(r.relative_activity) - 1.0) < 0.001);
+  if (!ref) { showAlert('anchorAlerts', 'No anchor row found with relative_activity = 1.0. Please mark your reference condition (any media) with relative_activity = 1.0 — all predictions will be normalized to that row.', 'error'); return; }
+  S.anchor = valid;
+  S.anchorPH = parseFloat(ref.pH);
+  showAlert('anchorAlerts', `Anchor loaded: ${valid.length} rows. Reference condition: ${ref.media} @ pH ${S.anchorPH.toFixed(1)} (activity = 1.0). All predictions will be relative to this.`, 'success');
+  document.getElementById('anchorInfo').style.display='';
+  document.getElementById('anchorInfo').innerHTML = `<div class="card card-sm mt-8"><div class="flex-row"><span class="badge badge-teal">Phage: ${valid[0].phage_name}</span><span class="badge badge-violet">Ref media: ${ref.media}</span><span class="badge badge-violet">Ref pH: ${S.anchorPH}</span><span class="badge badge-green">Ref row found ✓</span></div></div>`;
+  if (S.model) document.getElementById('runPredBtn').disabled = false;
+});
+
+// ── Iter upload ──
+setupDropZone('iterDropZone', 'iterFileInput', async (file) => {
+  clearAlerts('iterAlerts');
+  const text = await readFile(file);
+  const parsed = await parseCSV(text);
+  const {errors, valid} = validateRows(parsed.data);
+  if (errors.length) { showAlert('iterAlerts', errors.join('; '), 'error'); return; }
+  S.iterPending = valid;
+  showAlert('iterAlerts', `Ready to append ${valid.length} new rows to existing ${S.rawData.length} rows.`, 'success');
+  document.getElementById('iterTrainBtn').disabled = false;
+});
+
+// ═══════════════════════════════════════════════
+//  TRAINING
+// ═══════════════════════════════════════════════
+async function startTraining() {
+  if (!S.rawData.length) return;
+  const trainBtn = document.getElementById('trainBtn');
+  const spinner = document.getElementById('trainBtnSpinner');
+  trainBtn.disabled = true;
+  spinner.style.display = '';
+
+  await delay(50); // let DOM update
+
+  try {
+    const nTrees = parseInt(document.getElementById('cfgTrees').value) || 60;
+    const maxDepth = parseInt(document.getElementById('cfgDepth').value) || 8;
+    const minSplit = parseInt(document.getElementById('cfgMinSplit').value) || 2;
+
+    const X = S.rawData.map(extractFeatures);
+    const y = S.rawData.map(r => parseFloat(r.relative_activity));
+    S.featureNames = buildFeatureNames();
+
+    // Split
+    const n = X.length;
+    const idxs = shuffle(Array.from({length:n},(_,i)=>i));
+    const splitAt = Math.floor(n * 0.8);
+    const trainIdx = idxs.slice(0, splitAt);
+    const valIdx = idxs.slice(splitAt);
+    const Xt = trainIdx.map(i=>X[i]), yt = trainIdx.map(i=>y[i]);
+    const Xv = valIdx.map(i=>X[i]), yv = valIdx.map(i=>y[i]);
+
+    await delay(10);
+    S.model = trainRF(Xt, yt, nTrees, maxDepth, minSplit);
+
+    const trainPreds = predictRF(S.model, Xt);
+    const valPreds = predictRF(S.model, Xv);
+    S.trainMetrics = { r2: r2(yt, trainPreds), rmse: rmse(yt, trainPreds) };
+    S.valMetrics = { r2: r2(yv, valPreds), rmse: rmse(yv, valPreds) };
+
+    // Save version
+    const ver = S.versionHistory.length + 1;
+    S.versionHistory.push({
+      ver, time: new Date().toLocaleTimeString(),
+      trainR2: S.trainMetrics.r2, trainRMSE: S.trainMetrics.rmse,
+      valR2: S.valMetrics.r2, valRMSE: S.valMetrics.rmse,
+      nRows: S.rawData.length
+    });
+
+    // Render results
+    renderTrainResults({ Xt, yt, trainPreds, Xv, yv, valPreds, ver });
+    updateVersionHistory();
+
+    document.getElementById('trainResults').style.display = '';
+    document.getElementById('retrainBtn').style.display = '';
+    document.getElementById('proceedBtn').style.display = '';
+    document.getElementById('modelVersionBadge').textContent = 'v'+ver;
+    if (S.anchor) document.getElementById('runPredBtn').disabled = false;
+
+  } catch(e) {
+    showAlert('trainAlerts', 'Training error: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    trainBtn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+function renderTrainResults({Xt, yt, trainPreds, Xv, yv, valPreds, ver}) {
+  // Metrics
+  const mr = document.getElementById('metricsRow');
+  mr.innerHTML = '';
+  const metrics = [
+    {label:'Train R²', val: S.trainMetrics.r2, fmt: v => v.toFixed(3), thresh: [0.9, 0.7]},
+    {label:'Train RMSE', val: S.trainMetrics.rmse, fmt: v => v.toFixed(4), thresh: [0.05, 0.15], inverse:true},
+    {label:'Val R²', val: S.valMetrics.r2, fmt: v => v.toFixed(3), thresh: [0.85, 0.65]},
+    {label:'Val RMSE', val: S.valMetrics.rmse, fmt: v => v.toFixed(4), thresh: [0.07, 0.2], inverse:true},
+  ];
+  for (const m of metrics) {
+    const cls = m.inverse
+      ? (m.val < m.thresh[0] ? 'good' : m.val < m.thresh[1] ? 'warn' : 'bad')
+      : (m.val > m.thresh[0] ? 'good' : m.val > m.thresh[1] ? 'warn' : 'bad');
+    mr.innerHTML += `<div class="metric-card"><div class="metric-label">${m.label}</div><div class="metric-value ${cls}">${m.fmt(m.val)}</div></div>`;
+  }
+
+  // Scatter chart
+  destroyChart('scatterChart');
+  const allActual = [...yt, ...yv];
+  const allPred = [...trainPreds, ...valPreds];
+  const allSplit = [...Array(yt.length).fill('train'), ...Array(yv.length).fill('val')];
+  // color by media
+  const allRows = [...S.rawData];
+  const idxs = shuffle(Array.from({length:S.rawData.length},(_,i)=>i));
+  const trainI = idxs.slice(0, Math.floor(S.rawData.length*0.8));
+  const valI = idxs.slice(Math.floor(S.rawData.length*0.8));
+
+  const scatterData = [];
+  trainI.forEach((ri,j)=>{ scatterData.push({x:yt[j], y:trainPreds[j], m:S.rawData[ri]?.media||'other', split:'train'}); });
+  valI.forEach((ri,j)=>{ scatterData.push({x:yv[j], y:valPreds[j], m:S.rawData[ri]?.media||'other', split:'val'}); });
+
+  const scatterCtx = document.getElementById('scatterChart').getContext('2d');
+  S.charts['scatterChart'] = new Chart(scatterCtx, {
+    type: 'scatter',
+    data: {
+      datasets: MEDIA_LIST.map(med => ({
+        label: med,
+        data: scatterData.filter(d=>d.m===med||d.m.toLowerCase()===med).map(d=>({x:d.x,y:d.y,split:d.split})),
+        backgroundColor: (MEDIA_COLORS[med]||'#aaa')+'99',
+        borderColor: (MEDIA_COLORS[med]||'#aaa'),
+        borderWidth: 1, pointRadius: 4, pointHoverRadius: 6
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8ba3c4', font: {family:'IBM Plex Mono', size:10}, boxWidth:10, padding:8 } } },
+      scales: {
+        x: { title: {display:true, text:'Actual', color:'#8ba3c4', font:{family:'IBM Plex Mono',size:10}}, ticks:{color:'#4a6280'}, grid:{color:'#1e3050'}, min:0, max:1 },
+        y: { title: {display:true, text:'Predicted', color:'#8ba3c4', font:{family:'IBM Plex Mono',size:10}}, ticks:{color:'#4a6280'}, grid:{color:'#1e3050'}, min:0, max:1 }
+      }
+    }
+  });
+  // Draw diagonal
+  const {ctx, scales: {x,y}} = S.charts['scatterChart'];
+  S.charts['scatterChart'].options.plugins.annotation = {}; // skip annotation plugin
+
+  // Feature Importance
+  destroyChart('importanceChart');
+  const imp = computeImportance(S.model, Xt.slice(0,Math.min(60,Xt.length)), yt.slice(0,Math.min(60,yt.length)), S.featureNames);
+  const sorted = imp.map((v,i)=>({name:S.featureNames[i],val:v})).sort((a,b)=>b.val-a.val).slice(0,12);
+  const impCtx = document.getElementById('importanceChart').getContext('2d');
+  S.charts['importanceChart'] = new Chart(impCtx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(d=>d.name),
+      datasets: [{
+        data: sorted.map(d=>d.val),
+        backgroundColor: sorted.map((_,i)=> i<4?'#00d4b4aa':'#a855f7aa'),
+        borderColor: sorted.map((_,i)=> i<4?'#00d4b4':'#a855f7'),
+        borderWidth: 1, borderRadius: 3
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: {display:false} },
+      scales: {
+        x: { ticks:{color:'#4a6280'}, grid:{color:'#1e3050'} },
+        y: { ticks:{color:'#8ba3c4', font:{family:'IBM Plex Mono',size:10}}, grid:{display:false} }
+      }
+    }
+  });
+
+  // Residual histogram
+  destroyChart('residualChart');
+  const residuals = [...yt.map((a,i)=>a-trainPreds[i]), ...yv.map((a,i)=>a-valPreds[i])];
+  const minR = Math.min(...residuals), maxR = Math.max(...residuals);
+  const nBins = 20;
+  const binW = (maxR - minR) / nBins || 0.01;
+  const bins = Array(nBins).fill(0);
+  residuals.forEach(r => { const b = Math.min(nBins-1, Math.floor((r-minR)/binW)); bins[b]++; });
+  const binLabels = bins.map((_,i)=>((minR + i*binW)).toFixed(3));
+  const resCtx = document.getElementById('residualChart').getContext('2d');
+  S.charts['residualChart'] = new Chart(resCtx, {
+    type: 'bar',
+    data: {
+      labels: binLabels,
+      datasets: [{
+        data: bins,
+        backgroundColor: '#7c3aed88', borderColor: '#a855f7', borderWidth: 1, borderRadius: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: {display:false} },
+      scales: {
+        x: { ticks:{color:'#4a6280', font:{size:9}, maxRotation:45}, grid:{color:'#1e3050'} },
+        y: { ticks:{color:'#4a6280'}, grid:{color:'#1e3050'}, title:{display:true, text:'Count', color:'#8ba3c4'} }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  PREDICTION
+// ═══════════════════════════════════════════════
+function checkModelForPredict() {
+  const warn = document.getElementById('noModelWarn');
+  warn.style.display = S.model ? 'none' : '';
+  if (S.model && S.anchor) document.getElementById('runPredBtn').disabled = false;
+}
+
+async function runPrediction() {
+  if (!S.model || !S.anchor) return;
+  const btn = document.getElementById('runPredBtn');
+  const spinner = document.getElementById('predBtnSpinner');
+  btn.disabled = true; spinner.style.display = '';
+  await delay(50);
+  try {
+    const pHs = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5];
+    const refRow = S.anchor.find(r => Math.abs(parseFloat(r.relative_activity)-1.0) < 0.001);
+    const refFeats = extractFeatures(refRow);
+    const refPred = mean(S.model.trees.map(t => predictTree(t, refFeats)));
+    const refScale = 1.0 / (refPred || 1.0);
+
+    // Build matrix: media x pH
+    const matrix = {};
+    for (const med of MEDIA_LIST) {
+      matrix[med] = {};
+      for (const pH of pHs) {
+        const row = { ...refRow, pH: pH.toString(), media: med, relative_activity: '0' };
+        const feats = extractFeatures(row);
+        const pred = mean(S.model.trees.map(t => predictTree(t, feats)));
+        matrix[med][pH] = Math.max(0, pred * refScale);
+      }
+    }
+    S.predMatrix = matrix;
+    renderPredResults(matrix, pHs);
+    document.getElementById('predResults').style.display = '';
+  } catch(e) {
+    showAlert('anchorAlerts', 'Prediction error: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    btn.disabled = false; spinner.style.display = 'none';
+  }
+}
+
+function renderPredResults(matrix, pHs) {
+  // Line chart
+  destroyChart('lineChartPred');
+  const lineCtx = document.getElementById('lineChartPred').getContext('2d');
+  S.charts['lineChartPred'] = new Chart(lineCtx, {
+    type: 'line',
+    data: {
+      labels: pHs.map(p=>p.toFixed(1)),
+      datasets: MEDIA_LIST.map(med => ({
+        label: med, data: pHs.map(pH => matrix[med][pH]),
+        borderColor: MEDIA_COLORS[med]||'#aaa',
+        backgroundColor: (MEDIA_COLORS[med]||'#aaa')+'22',
+        borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7,
+        tension: 0.3, fill: false
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8ba3c4', font:{family:'IBM Plex Mono',size:10}, boxWidth:10, padding:8 } } },
+      scales: {
+        x: { title:{display:true,text:'pH',color:'#8ba3c4',font:{family:'IBM Plex Mono',size:10}}, ticks:{color:'#4a6280'}, grid:{color:'#1e3050'} },
+        y: { title:{display:true,text:'Relative Activity',color:'#8ba3c4',font:{family:'IBM Plex Mono',size:10}}, ticks:{color:'#4a6280'}, grid:{color:'#1e3050'}, min:0 }
+      }
+    }
+  });
+
+  // Bar chart at anchor pH
+  destroyChart('barChartPred');
+  const anchorPH = S.anchorPH || 7.0;
+  const nearestPH = pHs.reduce((a,b) => Math.abs(b-anchorPH)<Math.abs(a-anchorPH) ? b : a);
+  const barCtx = document.getElementById('barChartPred').getContext('2d');
+  S.charts['barChartPred'] = new Chart(barCtx, {
+    type: 'bar',
+    data: {
+      labels: MEDIA_LIST,
+      datasets: [{
+        label: `pH ${nearestPH.toFixed(1)}`,
+        data: MEDIA_LIST.map(m => matrix[m][nearestPH]),
+        backgroundColor: MEDIA_LIST.map(m => (MEDIA_COLORS[m]||'#aaa')+'cc'),
+        borderColor: MEDIA_LIST.map(m => MEDIA_COLORS[m]||'#aaa'),
+        borderWidth: 1.5, borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: {color:'#8ba3c4',font:{size:10}} } },
+      scales: {
+        x: { ticks:{color:'#8ba3c4',font:{family:'IBM Plex Mono',size:10}}, grid:{display:false} },
+        y: { title:{display:true,text:'Relative Activity',color:'#8ba3c4',font:{size:10}}, ticks:{color:'#4a6280'}, grid:{color:'#1e3050'}, min:0 }
+      }
+    }
+  });
+
+  // Heatmap
+  drawHeatmap(matrix, pHs);
+}
+
+function heatColorRGB(t) {
+  // red (low) → amber → green (high)
+  const r = Math.round(220 * (1-t) + 34 * t);
+  const g = Math.round(50  * (1-t) + 197 * t);
+  const b = Math.round(50  * (1-t) + 94  * t);
+  return {r, g, b, css: `rgb(${r},${g},${b})`};
+}
+
+function getHeatmapMinMax(matrix, pHs) {
+  let minV = Infinity, maxV = -Infinity;
+  for (const med of MEDIA_LIST) for (const pH of pHs) {
+    const v = matrix[med][pH];
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
+  }
+  return { minV, maxV, range: (maxV - minV) || 1 };
+}
+
+function drawHeatmap(matrix, pHs) {
+  const container = document.getElementById('heatmapDiv');
+  const tooltip   = document.getElementById('hmTooltip');
+  const { minV, maxV, range } = getHeatmapMinMax(matrix, pHs);
+
+  // ── Build table ──
+  let html = `<table class="heatmap-table"><thead><tr>`;
+  html += `<th class="media-header">media \\ pH</th>`;
+  pHs.forEach(pH => { html += `<th>${pH.toFixed(1)}</th>`; });
+  html += `</tr></thead><tbody>`;
+
+  MEDIA_LIST.forEach((med, ri) => {
+    html += `<tr>`;
+    html += `<th class="media-header" style="color:${MEDIA_COLORS[med]||'#8ba3c4'}">${med}</th>`;
+    pHs.forEach((pH, ci) => {
+      const v = matrix[med][pH];
+      const t = (v - minV) / range;
+      const {r, g, b, css} = heatColorRGB(t);
+      // Text contrast
+      const lum = 0.299*r + 0.587*g + 0.114*b;
+      const textColor = lum > 140 ? '#0e1628' : '#f0f6ff';
+      html += `<td class="heatmap-cell"
+        data-med="${med}" data-ph="${pH}" data-val="${v.toFixed(4)}" data-ri="${ri}" data-ci="${ci}"
+        style="background:${css}">
+        <span class="cell-val" style="color:${textColor}">${v.toFixed(3)}</span>
+      </td>`;
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody>`;
+
+  // ── Gradient legend ──
+  html += `<tfoot><tr><td colspan="${pHs.length+1}" style="padding-top:10px;">`;
+  html += `<div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.68rem;color:var(--text-lo)">`;
+  html += `<span>${minV.toFixed(3)}</span>`;
+  html += `<div style="flex:1;height:8px;border-radius:4px;background:linear-gradient(to right,rgb(220,50,50),rgb(245,158,11),rgb(34,197,94));opacity:.85"></div>`;
+  html += `<span>${maxV.toFixed(3)}</span>`;
+  html += `<span style="margin-left:8px;color:var(--text-lo)">relative activity</span>`;
+  html += `</div></td></tr></tfoot>`;
+  html += `</table>`;
+  container.innerHTML = html;
+
+  // ── Interactivity ──
+  const cells = container.querySelectorAll('.heatmap-cell');
+
+  function clearHighlights() {
+    cells.forEach(c => c.classList.remove('row-hi','col-hi','active-hi'));
+  }
+
+  cells.forEach(cell => {
+    cell.addEventListener('mouseenter', (e) => {
+      clearHighlights();
+      const ri = parseInt(cell.dataset.ri), ci = parseInt(cell.dataset.ci);
+      // Highlight row and column
+      cells.forEach(c => {
+        if (parseInt(c.dataset.ri) === ri) c.classList.add('row-hi');
+        if (parseInt(c.dataset.ci) === ci) c.classList.add('col-hi');
+      });
+      cell.classList.add('active-hi');
+
+      // Show tooltip
+      const med = cell.dataset.med, pH = cell.dataset.ph, val = cell.dataset.val;
+      tooltip.innerHTML = `
+        <span class="tt-val">${val}</span>
+        <span style="color:${MEDIA_COLORS[med]||'#8ba3c4'}">${med}</span>
+        <span style="color:var(--text-lo)"> @ pH ${pH}</span>
+      `;
+      tooltip.classList.add('visible');
+      positionTooltip(e);
+    });
+
+    cell.addEventListener('mousemove', positionTooltip);
+
+    cell.addEventListener('mouseleave', () => {
+      clearHighlights();
+      tooltip.classList.remove('visible');
+    });
+  });
+
+  function positionTooltip(e) {
+    const tt = tooltip;
+    const x = e.clientX + 14, y = e.clientY - 10;
+    const ww = window.innerWidth, wh = window.innerHeight;
+    tt.style.left = (x + 160 > ww ? e.clientX - 170 : x) + 'px';
+    tt.style.top  = (y + 80  > wh ? e.clientY - 80  : y) + 'px';
+  }
+}
+
+// ── roundRect polyfill for Safari / older Chrome ──
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = Math.min(r, w/2, h/2);
+    this.moveTo(x+r, y);
+    this.lineTo(x+w-r, y); this.arcTo(x+w, y, x+w, y+r, r);
+    this.lineTo(x+w, y+h-r); this.arcTo(x+w, y+h, x+w-r, y+h, r);
+    this.lineTo(x+r, y+h); this.arcTo(x, y+h, x, y+h-r, r);
+    this.lineTo(x, y+r); this.arcTo(x, y, x+r, y, r);
+    this.closePath();
+    return this;
+  };
+}
+
+// ── PNG export: redraw to offscreen hi-res canvas ──
+function downloadHeatmapPNG() {
+  if (!S.predMatrix) return;
+  const pHs = [5.0,5.5,6.0,6.5,7.0,7.5,8.0,8.5];
+  const matrix = S.predMatrix;
+  const { minV, maxV, range } = getHeatmapMinMax(matrix, pHs);
+
+  const DPR = 3; // 3× for crisp export
+  const cellW = 90, cellH = 48;
+  const labelW = 150, labelH = 36;
+  const padL = 16, padT = 16, padR = 24, padB = 40;
+  const W = padL + labelW + pHs.length * cellW + padR;
+  const H = padT + labelH + MEDIA_LIST.length * cellH + padB;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+
+  // Background
+  ctx.fillStyle = '#0e1628';
+  ctx.fillRect(0, 0, W, H);
+
+  // pH headers
+  ctx.font = '500 12px "IBM Plex Mono", monospace';
+  ctx.fillStyle = '#00d4b4';
+  ctx.textAlign = 'center';
+  pHs.forEach((pH, j) => {
+    ctx.fillText(pH.toFixed(1), padL + labelW + j * cellW + cellW/2, padT + 22);
+  });
+
+  // Rows
+  MEDIA_LIST.forEach((med, i) => {
+    const rowY = padT + labelH + i * cellH;
+
+    // Media label
+    ctx.font = '500 11px "IBM Plex Mono", monospace';
+    ctx.fillStyle = MEDIA_COLORS[med] || '#8ba3c4';
+    ctx.textAlign = 'right';
+    ctx.fillText(med, padL + labelW - 10, rowY + cellH/2 + 4);
+
+    pHs.forEach((pH, j) => {
+      const x = padL + labelW + j * cellW;
+      const v = matrix[med][pH];
+      const t = (v - minV) / range;
+      const {r, g, b, css} = heatColorRGB(t);
+
+      // Rounded cell
+      const rx = 5;
+      ctx.fillStyle = css;
+      ctx.beginPath();
+      ctx.roundRect(x + 2, rowY + 2, cellW - 4, cellH - 4, rx);
+      ctx.fill();
+
+      // Value text
+      const lum = 0.299*r + 0.587*g + 0.114*b;
+      ctx.fillStyle = lum > 140 ? '#0e1628' : '#f0f6ff';
+      ctx.font = 'bold 11px "IBM Plex Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(v.toFixed(3), x + cellW/2, rowY + cellH/2 + 4);
+    });
+  });
+
+  // Legend bar
+  const lgY = padT + labelH + MEDIA_LIST.length * cellH + 12;
+  const lgX = padL + labelW;
+  const lgW = pHs.length * cellW;
+  const grad = ctx.createLinearGradient(lgX, 0, lgX + lgW, 0);
+  grad.addColorStop(0,   'rgb(220,50,50)');
+  grad.addColorStop(0.5, 'rgb(245,158,11)');
+  grad.addColorStop(1,   'rgb(34,197,94)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(lgX, lgY, lgW, 8, 4);
+  ctx.fill();
+
+  ctx.font = '10px "IBM Plex Mono", monospace';
+  ctx.fillStyle = '#4a6280';
+  ctx.textAlign = 'left';
+  ctx.fillText(`min ${minV.toFixed(3)}`, lgX, lgY + 22);
+  ctx.textAlign = 'right';
+  ctx.fillText(`max ${maxV.toFixed(3)}`, lgX + lgW, lgY + 22);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#4a6280';
+  ctx.fillText('relative activity', lgX + lgW/2, lgY + 22);
+
+  // Download
+  const url = canvas.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = url; a.download = 'phage_activity_heatmap.png'; a.click();
+}
+
+// ═══════════════════════════════════════════════
+//  ITERATE
+// ═══════════════════════════════════════════════
+async function iterTrain() {
+  if (!S.iterPending) return;
+  S.rawData = [...S.rawData, ...S.iterPending];
+  S.iterPending = null;
+  document.getElementById('iterTrainBtn').disabled = true;
+  document.getElementById('totalRowsBadge').textContent = `${S.rawData.length} rows total`;
+  document.getElementById('iterSummary').style.display = '';
+  showAlert('iterAlerts', `Appended data. Retraining on ${S.rawData.length} total rows...`, 'info');
+  const spinner = document.getElementById('iterBtnSpinner');
+  document.getElementById('iterTrainBtn').disabled = true;
+  spinner.style.display='';
+  await delay(100);
+  try {
+    await startTraining();
+    showAlert('iterAlerts', 'Retrain complete! See updated results in the Train tab.', 'success');
+  } finally {
+    spinner.style.display='none';
+    document.getElementById('iterTrainBtn').disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  VERSION HISTORY
+// ═══════════════════════════════════════════════
+function updateVersionHistory() {
+  const el = document.getElementById('versionHistory');
+  if (!S.versionHistory.length) return;
+  el.innerHTML = S.versionHistory.map(v => `
+    <div class="version-item">
+      <span class="version-num">v${v.ver}</span>
+      <span class="badge badge-teal">Val R² ${v.valR2.toFixed(3)}</span>
+      <span class="badge badge-violet">RMSE ${v.valRMSE.toFixed(4)}</span>
+      <span style="color:var(--text-lo);font-size:.7rem">${v.nRows} rows</span>
+      <span class="version-time">${v.time}</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════
+//  DOWNLOAD
+// ═══════════════════════════════════════════════
+function downloadTemplate() {
+  const rows = [
+    'phage_name,capsid_sequence,pH,media,relative_activity',
+    'PhageA,MAKLVEFQRTSWGPHYDNICMAESVFLT,7.0,SM_buffer,1.0',
+    'PhageA,MAKLVEFQRTSWGPHYDNICMAESVFLT,7.0,blood,0.72',
+    'PhageA,MAKLVEFQRTSWGPHYDNICMAESVFLT,6.5,blood,0.65',
+    'PhageA,MAKLVEFQRTSWGPHYDNICMAESVFLT,7.5,urine,0.58',
+    'PhageA,MAKLVEFQRTSWGPHYDNICMAESVFLT,6.0,intestinal_lumen,0.42',
+    'PhageA,MAKLVEFQRTSWGPHYDNICMAESVFLT,8.0,SM_buffer,0.88',
+    'PhageB,MTVLQASDHFGNREWIKYPTVCMAKLSTD,7.0,SM_buffer,1.0',
+    'PhageB,MTVLQASDHFGNREWIKYPTVCMAKLSTD,7.0,blood,0.61',
+    'PhageB,MTVLQASDHFGNREWIKYPTVCMAKLSTD,5.5,urine,0.35',
+    'PhageB,MTVLQASDHFGNREWIKYPTVCMAKLSTD,8.5,intestinal_lumen,0.28',
+  ].join('\n');
+  downloadTextFile('phage_activity_template.csv', rows);
+}
+
+function downloadTextFile(name, content) {
+  const blob = new Blob([content], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadChart(chartId, name) {
+  const chart = S.charts[chartId];
+  if (!chart) return;
+  const canvas = chart.canvas;
+  const url = canvas.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = url; a.download = name + '.png'; a.click();
+}
+
+function downloadHeatmapCSV() {
+  if (!S.predMatrix) return;
+  const pHs = [5.0,5.5,6.0,6.5,7.0,7.5,8.0,8.5];
+  const lines = ['media,' + pHs.map(p=>'pH_'+p.toFixed(1)).join(',')];
+  for (const med of MEDIA_LIST) {
+    lines.push(med + ',' + pHs.map(pH=>S.predMatrix[med][pH].toFixed(4)).join(','));
+  }
+  downloadTextFile('phage_activity_heatmap.csv', lines.join('\n'));
+}
+
+// ═══════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════
+function showAlert(containerId, msg, type='info') {
+  const icons = {error:'⚠', success:'✓', info:'ℹ'};
+  const c = document.getElementById(containerId);
+  c.innerHTML = `<div class="alert alert-${type}"><span class="alert-icon">${icons[type]||'ℹ'}</span><span>${msg}</span></div>`;
+}
+function clearAlerts(id) { document.getElementById(id).innerHTML = ''; }
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+function destroyChart(id) { if (S.charts[id]) { S.charts[id].destroy(); delete S.charts[id]; } }
+
+function renderTrainTable(rows) {
+  if (!rows.length) return;
+  const container = document.getElementById('trainTableContainer');
+  const cols = REQUIRED;
+  const html = `<table>
+    <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}<th>status</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      <td>${r.phage_name||''}</td>
+      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.capsid_sequence||''}">${(r.capsid_sequence||'').slice(0,18)}…</td>
+      <td>${r.pH||''}</td>
+      <td>${r.media||''}</td>
+      <td>${r.relative_activity||''}</td>
+      <td class="table-valid">✓ valid</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+  container.innerHTML = html;
+  document.getElementById('trainTableWrap').style.display = '';
+}
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+checkModelForPredict();
+</script>
+</body>
+</html>
