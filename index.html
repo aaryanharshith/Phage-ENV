@@ -1042,12 +1042,13 @@ function renderTrainResults({Xt, yt, trainPreds, Xv, yv, valPreds, ver}) {
       }
     }
   });
-}
-window.scrollTo({
-  top: document.body.scrollHeight,
-  left: 0,
-  behavior: 'smooth'
+  window.scrollTo({
+    top: document.body.scrollHeight,
+    behavior: 'smooth'
 });
+  
+}
+
 
 // ═══════════════════════════════════════════════
 //  PREDICTION
