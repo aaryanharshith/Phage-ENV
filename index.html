@@ -594,13 +594,13 @@ function showTab(i) {
 const AA_LIST = 'ACDEFGHIKLMNPQRSTVWY'.split('');
 const KD_SCALE = {A:1.8,R:-4.5,N:-3.5,D:-3.5,C:2.5,Q:-3.5,E:-3.5,G:-0.4,H:-3.2,I:4.5,L:3.8,K:-3.9,M:1.9,F:2.8,P:-1.6,S:-0.8,T:-0.7,W:-0.9,Y:-1.3,V:4.2};
 const PK_SCALE = {D:3.65,E:4.25,H:6.0,C:8.18,Y:10.07,K:10.53,R:12.48};
-const MEDIA_LIST = ['blood','intestinal_lumen','urine','SM_buffer','epidermis'];
+const MEDIA_LIST = ['blood','intestinal_lumen','urine','SM_buffer','other'];
 const MEDIA_COLORS = {
   blood: '#ef4444',
   intestinal_lumen: '#f97316',
   urine: '#eab308',
   SM_buffer: '#00d4b4',
-  epidermis: '#a855f7'
+  other: '#a855f7'
 };
 
 // ═══════════════════════════════════════════════
@@ -620,8 +620,8 @@ function extractFeatures(row) {
   // pH
   const pH = parseFloat(row.pH) || 7.0;
   // media one-hot
-  const med = (row.media || 'epidermis').trim().toLowerCase();
-  const mediaOH = MEDIA_LIST.map(m => (m === med || (m==='epidermis' && !MEDIA_LIST.slice(0,4).includes(med))) ? 1 : 0);
+  const med = (row.media || 'other').trim().toLowerCase();
+  const mediaOH = MEDIA_LIST.map(m => (m === med || (m==='other' && !MEDIA_LIST.slice(0,4).includes(med))) ? 1 : 0);
 
   return [...comp, Math.log1p(len)/10, hydro/5, pI/14, pH/14, ...mediaOH];
 }
@@ -782,7 +782,7 @@ function validateRows(rows) {
     if (isNaN(pH) || pH < 0 || pH > 14) rowErrs.push('pH invalid (must be 0–14 numeric)');
     const act = parseFloat(r.relative_activity);
     if (isNaN(act) || act < 0) rowErrs.push('relative_activity invalid (must be a non-negative number)');
-    if (!MEDIA_LIST.concat(['epidermis']).includes(r.media)) rowErrs.push('media must be one of: blood, intestinal_lumen, urine, SM_buffer, epidermis');
+    if (!MEDIA_LIST.concat(['other']).includes(r.media)) rowErrs.push('media must be one of: blood, intestinal_lumen, urine, SM_buffer, other');
     if (rowErrs.length) invalid.push({row:i+2, errs:rowErrs, data:r});
     else valid.push(r);
   });
@@ -960,8 +960,8 @@ function renderTrainResults({Xt, yt, trainPreds, Xv, yv, valPreds, ver}) {
   const valI = idxs.slice(Math.floor(S.rawData.length*0.8));
 
   const scatterData = [];
-  trainI.forEach((ri,j)=>{ scatterData.push({x:yt[j], y:trainPreds[j], m:S.rawData[ri]?.media||'epidermis', split:'train'}); });
-  valI.forEach((ri,j)=>{ scatterData.push({x:yv[j], y:valPreds[j], m:S.rawData[ri]?.media||'epidermis', split:'val'}); });
+  trainI.forEach((ri,j)=>{ scatterData.push({x:yt[j], y:trainPreds[j], m:S.rawData[ri]?.media||'other', split:'train'}); });
+  valI.forEach((ri,j)=>{ scatterData.push({x:yv[j], y:valPreds[j], m:S.rawData[ri]?.media||'other', split:'val'}); });
 
   const scatterCtx = document.getElementById('scatterChart').getContext('2d');
   S.charts['scatterChart'] = new Chart(scatterCtx, {
